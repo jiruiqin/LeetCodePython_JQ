@@ -9,7 +9,7 @@ setwd('~/Finance/Programming/R/')
 # install.packages('rJava')
 # install.packages('twitteR')
 #install.packages('Rserve')
-install.packages('sentimentr')
+#install.packages('sentimentr')
 library(Rserve)
 library(RTextTools)
 library(e1071)
@@ -43,7 +43,9 @@ cum_res <- matrix(nrow=nrow(speechdat), ncol=6)
 colnames(cum_res) <- c()
 rownames(cum_res) <- speechdat[,1]
 for(i in 1:nrow(speechdat)){
+
   speaker <- gsub("  ", '', gsub('\n', '', as.character(speechdat[i,3])))
+  speaker <- gsub("\\s", " ", speaker)
   webpage <- read_html(as.character(speechdat[i,2]))
   speech_data <- as.character(html_text(webpage))
   
@@ -51,12 +53,14 @@ for(i in 1:nrow(speechdat)){
   speech <- str_sub(speech_data, b)
   speech <- gsub(speechdat[i,1], "", speech)
   speech <- unlist(unlist(str_split(speech, '\n')))
-  speech <- paste( gsub("U.S.", "US", speech[sapply(speech, nchar)>10]), collapse='')
+  
+  speech <- paste( gsub("U.S.", "US", speech[sapply(speech, function (x) tryCatch({nchar(x)}, error=function(e){FALSE}))>10]), collapse='')
+  speech <- gsub("\r", "", gsub("\t", "", speech))
   speech <-  paste(strsplit(speech, split="    ")[[1]], collapse='')
   speech <-  paste(strsplit(speech, split="  ")[[1]], collapse='')
   speech <-  strsplit(speech, "[.]")[[1]]
   speech <- speech[sapply(speech, nchar)>10]
-  
+  speech <- speech[sapply(speech, function(x) !str_detect(x, '\\|'))]
   # run sentiment analysis apis
   out_agg <- classify.aggregate(speech,pos,neg)
   cum_res[i, 1] <- mean(out_agg$score)
@@ -88,24 +92,24 @@ for(i in 1:nrow(speechdat)){
   t<-str_replace_all(t, "[^[:alnum:]]", " ")
   t<-gsub('[[:digit:]]+', '', t)
   t<-removeWords(t, letters)
-  out_words <- all_words(t)
-  cum_words <- ifelse(length(cum_words)==0, out_words, merge(cum_words, out_words, by="WORD"))
+  out_words <- as.data.frame(all_words(t))
+  if(i==1){
+    cum_words <- out_words
+  } else{
+    cum_words <- bind_rows(cum_words,out_words) %>% group_by(WORD) %>% summarise_all(sum)
+  }
 }
 
 # create corpus
-corpus = Corpus(VectorSource(t))
-tdm = TermDocumentMatrix(corpus)
-tdm = as.matrix(tdm)
-
-# comparison word cloud
-comparison.cloud(tdm, colors = brewer.pal(length(t), "Dark2"),
-                 scale = c(3,.5), random.order = FALSE, title.size = 1.5)
 library(wordcloud)
-m <- as.matrix(myDtm)
-# calculate the frequency of words
-v <- sort(rowSums(m), decreasing=TRUE)
-myNames <- names(v)
-k <- which(names(v)=="miners")
-myNames[k] <- "mining"
-d <- data.frame(word=myNames, freq=v)
-wordcloud(d$word, d$freq, min.freq=3)
+wordcloud(cum_words$WORD, cum_words$FREQ, min.freq=3)
+
+# plot and granger causality
+
+
+# Add Market prices
+consumersent_ind <- read.csv("consumersent_indices.csv")
+market_ind <- read.csv("market_indices.csv")
+putcall_ratios <- read.csv('putcall_ratios.csv')
+trin_ind <- read.csv('trin.csv')
+
